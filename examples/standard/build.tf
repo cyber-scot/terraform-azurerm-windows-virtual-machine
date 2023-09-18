@@ -70,32 +70,17 @@ module "windows_vms" {
 
   vms = [
     {
-      rg_name                              = module.rg.rg_name
-      location                             = module.rg.rg_location
-      tags                                 = module.rg.rg_tags
-      name                                 = "vm-${var.short}-${var.loc}-${var.env}-01"
-      subnet_id                            = element(values(module.network.subnets_ids), 0)
-      patch_mode                           = "AutomaticByOS"
-      enable_automatic_updates             = true
-      admin_username                       = "CyberScot"
-      admin_password                       = "Password123!"
-      vm_size                              = "Standard_B2ms"
-      use_custom_image                     = false
-      availability_zone                    = "1"
-      timezone                             = "UTC"
-      custom_data                          = null
-      enable_encryption_at_host            = false
-      allow_extension_operations           = true
-      provision_vm_agent                   = true
-      use_simple_image                     = true
-      ultra_ssd_enabled                    = false
-      vm_os_simple                         = "WindowsServer2019Datacenter"
-      os_disk_name                         = "osdisk1"
-      os_disk_caching                      = "ReadWrite"
-      storage_account_type                 = "Standard_LRS"
-      os_disk_size_gb                      = 30
-      boot_diagnostics_storage_account_uri = "https://mystorageaccount.blob.core.windows.net/"
+      rg_name          = module.rg.rg_name
+      location         = module.rg.rg_location
+      tags             = module.rg.rg_tags
+      name             = "vm-${var.short}-${var.loc}-${var.env}-01"
+      subnet_id        = element(values(module.network.subnets_ids), 0)
+      admin_username   = "CyberScot"
+      admin_password   = "Password123!"
+      vm_size          = "Standard_B2ms"
+      timezone         = "UTC"
+      use_simple_image = true
+      vm_os_simple     = "Windows11Gen2"
     },
-    // ... add more VM configurations as needed
   ]
 }
