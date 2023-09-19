@@ -288,6 +288,7 @@ resource "azurerm_marketplace_agreement" "plan_acceptance_custom" {
 
 resource "azurerm_virtual_machine_extension" "windows_vm_inline_command" {
   for_each = { for vm in var.vms : vm.name => vm if try(vm.run_vm_command.inline, null) != null }
+  depends_on = [azurerm_windows_virtual_machine.this]
 
   name                       = each.value.run_vm_command.extension_name != null ? each.value.run_vm_command.extension_name : "run-command-${each.value.name}"
   publisher                  = "Microsoft.CPlat.Core"
@@ -309,7 +310,7 @@ resource "azurerm_virtual_machine_extension" "windows_vm_inline_command" {
 
 resource "azurerm_virtual_machine_extension" "windows_vm_file_command" {
   for_each = { for vm in var.vms : vm.name => vm if try(vm.run_vm_command.script_file, null) != null }
-
+  depends_on = [azurerm_windows_virtual_machine.this]
 
   name                       = each.value.run_vm_command.extension_name != null ? each.value.run_vm_command.extension_name : "run-command-file-${each.value.name}"
   publisher                  = "Microsoft.CPlat.Core"
@@ -331,7 +332,7 @@ resource "azurerm_virtual_machine_extension" "windows_vm_file_command" {
 
 resource "azurerm_virtual_machine_extension" "windows_vm_uri_command" {
   for_each = { for vm in var.vms : vm.name => vm if try(vm.run_vm_command.script_uri, null) != null }
-
+  depends_on = [azurerm_windows_virtual_machine.this]
 
   name                       = each.value.run_vm_command.extension_name != null ? each.value.run_vm_command.extension_name : "run-command-uri-${each.value.name}"
   publisher                  = "Microsoft.CPlat.Core"
