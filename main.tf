@@ -75,25 +75,25 @@ resource "azurerm_windows_virtual_machine" "this" {
     azurerm_marketplace_agreement.plan_acceptance_custom
   ]
 
-  name                     = each.value.name
-  resource_group_name      = each.value.rg_name
-  location                 = each.value.location
-  network_interface_ids    = [azurerm_network_interface.nic[each.key].id]
-  license_type             = each.value.license_type
-  patch_mode               = each.value.patch_mode
-  enable_automatic_updates = each.value.enable_automatic_updates
-  computer_name            = each.value.computer_name != null ? each.value.computer_name : local.netbios_names[each.key]
-  admin_username           = each.value.admin_username
-  admin_password           = each.value.admin_password
-  size                     = each.value.vm_size
-  source_image_id          = try(each.value.use_custom_image, null) == true ? each.value.custom_source_image_id : null
-  zone                     = local.random_zones[each.key]
-  availability_set_id      = each.value.availability_set_id
+  name                         = each.value.name
+  resource_group_name          = each.value.rg_name
+  location                     = each.value.location
+  network_interface_ids        = [azurerm_network_interface.nic[each.key].id]
+  license_type                 = each.value.license_type
+  patch_mode                   = each.value.patch_mode
+  enable_automatic_updates     = each.value.enable_automatic_updates
+  computer_name                = each.value.computer_name != null ? each.value.computer_name : local.netbios_names[each.key]
+  admin_username               = each.value.admin_username
+  admin_password               = each.value.admin_password
+  size                         = each.value.vm_size
+  source_image_id              = try(each.value.use_custom_image, null) == true ? each.value.custom_source_image_id : null
+  zone                         = local.random_zones[each.key]
+  availability_set_id          = each.value.availability_set_id
   virtual_machine_scale_set_id = each.value.virtual_machine_scale_set_id
-  timezone                 = each.value.timezone
-  user_data                = each.value.user_data
-  custom_data              = each.value.custom_data
-  tags                     = each.value.tags
+  timezone                     = each.value.timezone
+  user_data                    = each.value.user_data
+  custom_data                  = each.value.custom_data
+  tags                         = each.value.tags
 
   encryption_at_host_enabled = each.value.enable_encryption_at_host
   allow_extension_operations = each.value.allow_extension_operations
@@ -192,14 +192,14 @@ resource "azurerm_windows_virtual_machine" "this" {
   eviction_policy = try(each.value.spot_instance, false) ? each.value.spot_instance_eviction_policy : null
 
   os_disk {
-    name                          = each.value.os_disk.name != null ? each.value.os_disk.name : "osdisk-${each.value.name}"
-    caching                       = each.value.os_disk.caching
-    storage_account_type          = each.value.os_disk.os_disk_type
-    disk_size_gb                  = each.value.os_disk.disk_size_gb
-    disk_encryption_set_id        = each.value.os_disk.disk_encryption_set_id
+    name                             = each.value.os_disk.name != null ? each.value.os_disk.name : "osdisk-${each.value.name}"
+    caching                          = each.value.os_disk.caching
+    storage_account_type             = each.value.os_disk.os_disk_type
+    disk_size_gb                     = each.value.os_disk.disk_size_gb
+    disk_encryption_set_id           = each.value.os_disk.disk_encryption_set_id
     secure_vm_disk_encryption_set_id = each.value.os_disk.secure_vm_disk_encryption_set_id
-    security_encryption_type      = each.value.os_disk.security_encryption_type
-    write_accelerator_enabled     = each.value.os_disk.write_accelerator_enabled
+    security_encryption_type         = each.value.os_disk.security_encryption_type
+    write_accelerator_enabled        = each.value.os_disk.write_accelerator_enabled
 
     dynamic "diff_disk_settings" {
       for_each = each.value.os_disk.diff_disk_settings != null ? [each.value.os_disk.diff_disk_settings] : []
@@ -306,7 +306,7 @@ resource "azurerm_virtual_machine_extension" "windows_vm_inline_command" {
 }
 
 resource "azurerm_virtual_machine_extension" "windows_vm_file_command" {
-for_each = { for vm in var.vms : vm.name => vm if try(vm.run_vm_command.script_file, null) != null }
+  for_each = { for vm in var.vms : vm.name => vm if try(vm.run_vm_command.script_file, null) != null }
 
 
   name                       = each.value.run_vm_command.extension_name != null ? each.value.run_vm_command.extension_name : "run-command-file-${each.value.name}"
@@ -328,7 +328,7 @@ for_each = { for vm in var.vms : vm.name => vm if try(vm.run_vm_command.script_f
 }
 
 resource "azurerm_virtual_machine_extension" "windows_vm_uri_command" {
-for_each = { for vm in var.vms : vm.name => vm if try(vm.run_vm_command.script_uri, null) != null }
+  for_each = { for vm in var.vms : vm.name => vm if try(vm.run_vm_command.script_uri, null) != null }
 
 
   name                       = each.value.run_vm_command.extension_name != null ? each.value.run_vm_command.extension_name : "run-command-uri-${each.value.name}"
