@@ -37,7 +37,6 @@ resource "azurerm_network_interface" "nic" {
   }
 }
 
-
 resource "azurerm_application_security_group" "asg" {
   for_each = { for vm in var.vms : vm.name => vm if vm.create_asg == true }
 
@@ -51,7 +50,7 @@ resource "azurerm_network_interface_application_security_group_association" "asg
   for_each = { for vm in var.vms : vm.name => vm }
 
   network_interface_id          = azurerm_network_interface.nic[each.key].id
-  application_security_group_id = each.value.asg_id != null ? each.value_asg_id : azurerm_application_security_group.asg[each.key].id
+  application_security_group_id = each.value.asg_id != null ? each.value.asg_id : azurerm_application_security_group.asg[each.key].id
 }
 
 
@@ -90,7 +89,9 @@ resource "azurerm_windows_virtual_machine" "this" {
   source_image_id          = try(each.value.use_custom_image, null) == true ? each.value.custom_source_image_id : null
   zone                     = local.random_zones[each.key]
   availability_set_id      = each.value.availability_set_id
+  virtual_machine_scale_set_id = each.value.virtual_machine_scale_set_id
   timezone                 = each.value.timezone
+  user_data                = each.value.user_data
   custom_data              = each.value.custom_data
   tags                     = each.value.tags
 
@@ -191,16 +192,66 @@ resource "azurerm_windows_virtual_machine" "this" {
   eviction_policy = try(each.value.spot_instance, false) ? each.value.spot_instance_eviction_policy : null
 
   os_disk {
-    name                 = each.value.os_disk_name != null ? each.value.os_disk_name : "osdisk-${each.value.name}"
-    caching              = each.value.os_disk_caching
-    storage_account_type = each.value.os_disk_type
-    disk_size_gb         = each.value.os_disk_size_gb
-  }
+    name                          = each.value.os_disk.name != null ? each.value.os_disk.name : "osdisk-${each.value.name}"
+    caching                       = each.value.os_disk.caching
+    storage_account_type          = each.value.os_disk.os_disk_type
+    disk_size_gb                  = each.value.os_disk.disk_size_gb
+    disk_encryption_set_id        = each.value.os_disk.disk_encryption_set_id
+    secure_vm_disk_encryption_set_id = each.value.os_disk.secure_vm_disk_encryption_set_id
+    security_encryption_type      = each.value.os_disk.security_encryption_type
+    write_accelerator_enabled     = each.value.os_disk.write_accelerator_enabled
 
+    dynamic "diff_disk_settings" {
+      for_each = each.value.os_disk.diff_disk_settings != null ? [each.value.os_disk.diff_disk_settings] : []
+      content {
+        option = diff_disk_settings.value.option
+      }
+    }
+  }
   dynamic "boot_diagnostics" {
     for_each = each.value.boot_diagnostics_storage_account_uri != null ? [1] : []
     content {
       storage_account_uri = each.value.boot_diagnostics_storage_account_uri
+    }
+  }
+
+  dynamic "additional_unattend_content" {
+    for_each = each.value.additional_unattend_content != null ? each.value.additional_unattend_content : []
+    content {
+      content = additional_unattend_content.value.content
+      setting = additional_unattend_content.value.setting
+    }
+  }
+
+  dynamic "secret" {
+    for_each = each.value.secrets != null ? each.value.secrets : []
+    content {
+      key_vault_id = secret.value.key_vault_id
+
+      dynamic "certificate" {
+        for_each = secret.value.certificates
+        content {
+          store = certificate.value.store
+          url   = certificate.value.url
+        }
+      }
+    }
+  }
+
+  dynamic "termination_notification" {
+    for_each = each.value.termination_notification != null ? [each.value.termination_notification] : []
+    content {
+      enabled = termination_notification.value.enabled
+      timeout = lookup(termination_notification.value, "timeout", "PT5M")
+    }
+  }
+
+
+  dynamic "winrm_listener" {
+    for_each = each.value.winrm_listener != null ? each.value.winrm_listener : []
+    content {
+      protocol        = winrm_listener.value.protocol
+      certificate_url = winrm_listener.value.certificate_url
     }
   }
 }
@@ -232,3 +283,69 @@ resource "azurerm_marketplace_agreement" "plan_acceptance_custom" {
   offer     = lookup(each.value.plan, "product", null)
   plan      = lookup(each.value.plan, "name", null)
 }
+
+resource "azurerm_virtual_machine_extension" "windows_vm_inline_command" {
+  for_each = { for vm in var.vms : vm.name => vm if try(vm.run_vm_command.inline, null) != null }
+
+  name                       = each.value.run_vm_command.extension_name != null ? each.value.run_vm_command.extension_name : "run-command-${each.value.name}"
+  publisher                  = "Microsoft.CPlat.Core"
+  type                       = "RunCommandWindows"
+  type_handler_version       = "1.1"
+  auto_upgrade_minor_version = true
+
+  settings = jsonencode({
+    script = tolist([each.value.run_vm_command.inline])
+  })
+
+  tags               = each.value.tags
+  virtual_machine_id = azurerm_windows_virtual_machine.this[each.key].id
+
+  lifecycle {
+    ignore_changes = all
+  }
+}
+
+resource "azurerm_virtual_machine_extension" "windows_vm_file_command" {
+for_each = { for vm in var.vms : vm.name => vm if try(vm.run_vm_command.script_file, null) != null }
+
+
+  name                       = each.value.run_vm_command.extension_name != null ? each.value.run_vm_command.extension_name : "run-command-file-${each.value.name}"
+  publisher                  = "Microsoft.CPlat.Core"
+  type                       = "RunCommandWindows"
+  type_handler_version       = "1.1"
+  auto_upgrade_minor_version = true
+
+  settings = jsonencode({
+    script = compact(tolist([each.value.run_vm_command.script_file]))
+  })
+
+  tags               = each.value.tags
+  virtual_machine_id = azurerm_windows_virtual_machine.this[each.key].id
+
+  lifecycle {
+    ignore_changes = all
+  }
+}
+
+resource "azurerm_virtual_machine_extension" "windows_vm_uri_command" {
+for_each = { for vm in var.vms : vm.name => vm if try(vm.run_vm_command.script_uri, null) != null }
+
+
+  name                       = each.value.run_vm_command.extension_name != null ? each.value.run_vm_command.extension_name : "run-command-uri-${each.value.name}"
+  publisher                  = "Microsoft.CPlat.Core"
+  type                       = "RunCommandWindows"
+  type_handler_version       = "1.1"
+  auto_upgrade_minor_version = true
+
+  settings = jsonencode({
+    script = compact(tolist([each.value.run_vm_command.script_uri]))
+  })
+
+  tags               = each.value.tags
+  virtual_machine_id = azurerm_windows_virtual_machine.this[each.key].id
+
+  lifecycle {
+    ignore_changes = all
+  }
+}
+

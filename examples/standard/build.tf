@@ -66,20 +66,27 @@ module "bastion" {
 }
 
 module "windows_10_vms" {
-  source = "cyber-scot/windows-virtual-machine/azurerm"
+  source = "../../"
+
 
   vms = [
     {
       rg_name        = module.rg.rg_name
       location       = module.rg.rg_location
       tags           = module.rg.rg_tags
-      name           = "vm-${var.short}-${var.loc}-${var.env}-01}"
+      name           = "vm-${var.short}-${var.loc}-${var.env}-01"
       subnet_id      = element(values(module.network.subnets_ids), 0)
       admin_username = "Local${title(var.short)}${title(var.env)}Admin"
       admin_password = data.azurerm_key_vault_secret.mgmt_admin_pwd.value
       vm_size        = "Standard_B2ms"
       timezone       = "UTC"
       vm_os_simple   = "Windows10Gen2"
+      os_disk = {
+        disk_size_gb = 256
+      }
+      run_vm_command = {
+        inline = "Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))"
+      }
     },
   ]
 }

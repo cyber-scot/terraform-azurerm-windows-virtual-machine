@@ -2,6 +2,10 @@ variable "vms" {
   description = "List of VM configurations."
   type = list(object({
     accept_plan                          = optional(bool, false)
+    additional_unattend_content = optional(list(object({
+      content = string
+      setting = string
+    })))
     admin_password                       = string
     admin_username                       = string
     allocation_method                    = optional(string, "Static")
@@ -11,6 +15,13 @@ variable "vms" {
     availability_set_id                  = optional(string)
     availability_zone                    = optional(string, "random")
     boot_diagnostics_storage_account_uri = optional(string, null)
+       secrets = optional(list(object({
+      key_vault_id = string
+      certificates  = list(object({
+        store = string
+        url   = string
+      }))
+    })))
     computer_name                        = optional(string)
     create_asg                           = optional(bool, true)
     custom_data                          = optional(string)
@@ -25,10 +36,19 @@ variable "vms" {
     name                                 = string
     nic_ipconfig_name                    = optional(string)
     nic_name                             = optional(string, null)
-    os_disk_caching                      = optional(string, "ReadWrite")
-    os_disk_name                         = optional(string)
-    os_disk_size_gb                      = optional(number, 128)
-    os_disk_type                         = optional(string, "StandardSSD_LRS")
+    os_disk = object({
+      caching                = optional(string, "ReadWrite")
+      os_disk_type                   = optional(string, "StandardSSD_LRS")
+      diff_disk_settings             = optional(object({
+        option = string
+      }))
+      disk_encryption_set_id         = optional(string, null)
+      disk_size_gb                   = optional(number, "127")
+      name                           = optional(string, null)
+      secure_vm_disk_encryption_set_id = optional(string, null)
+      security_encryption_type       = optional(string, null)
+      write_accelerator_enabled      = optional(bool, false)
+    })
     patch_mode                           = optional(string, "AutomaticByOS")
     pip_custom_dns_label                 = optional(string)
     pip_name                             = optional(string)
@@ -41,13 +61,25 @@ variable "vms" {
     spot_instance_max_bid_price          = optional(string)
     static_private_ip                    = optional(string)
     subnet_id                            = string
+    termination_notification = optional(object({
+      enabled = bool
+      timeout = optional(string)
+    }))
     tags                                 = map(string)
+  run_vm_command = optional(object({
+    extension_name = optional(string)
+    inline         = optional(string)
+    script_file    = optional(string)
+    script_uri     = optional(string)
+  }))
     timezone                             = optional(string)
     ultra_ssd_enabled                    = optional(bool, false)
     use_custom_image                     = optional(bool, false)
     use_custom_image_with_plan           = optional(bool, false)
     use_simple_image                     = optional(bool, true)
     use_simple_image_with_plan           = optional(bool, false)
+    user_data                            = optional(string, null)
+    virtual_machine_scale_set_id         = optional(string, null)
     vm_os_id                             = optional(string, "")
     vm_os_offer                          = optional(string)
     vm_os_publisher                      = optional(string)
@@ -55,6 +87,11 @@ variable "vms" {
     vm_os_sku                            = optional(string)
     vm_os_version                        = optional(string)
     vm_size                              = string
+    vtpm_enabled                         = optional(bool, false)
+    winrm_listener = optional(list(object({
+      protocol        = string
+      certificate_url = optional(string)
+    })))
   }))
   default = []
 }
