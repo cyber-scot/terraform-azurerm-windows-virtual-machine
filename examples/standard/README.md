@@ -51,38 +51,37 @@ module "nsg" {
   }
 }
 
-#module "bastion" {
-#  source = "cyber-scot/bastion/azurerm"
-#
-#  rg_name  = module.rg.rg_name
-#  location = module.rg.rg_location
-#  tags     = module.rg.rg_tags
-#
-#  bastion_host_name                  = "bst-${var.short}-${var.loc}-${var.env}-01"
-#  create_bastion_nsg                 = true
-#  create_bastion_nsg_rules           = true
-#  create_bastion_subnet              = true
-#  bastion_subnet_target_vnet_name    = module.network.vnet_name
-#  bastion_subnet_target_vnet_rg_name = module.network.vnet_rg_name
-#  bastion_subnet_range               = "10.0.1.0/27"
-#}
+module "bastion" {
+  source = "cyber-scot/bastion/azurerm"
 
-module "windows_vms" {
-  source = "../../"
+  rg_name  = module.rg.rg_name
+  location = module.rg.rg_location
+  tags     = module.rg.rg_tags
+
+  bastion_host_name                  = "bst-${var.short}-${var.loc}-${var.env}-01"
+  create_bastion_nsg                 = true
+  create_bastion_nsg_rules           = true
+  create_bastion_subnet              = true
+  bastion_subnet_target_vnet_name    = module.network.vnet_name
+  bastion_subnet_target_vnet_rg_name = module.network.vnet_rg_name
+  bastion_subnet_range               = "10.0.1.0/27"
+}
+
+module "windows_10_vms" {
+  source = "cyber-scot/windows-virtual-machine/azurerm"
 
   vms = [
     {
-      rg_name                              = module.rg.rg_name
-      location                             = module.rg.rg_location
-      tags                                 = module.rg.rg_tags
-      name                                 = "vm-${var.short}-${var.loc}-${var.env}-01"
-      subnet_id                            = element(values(module.network.subnets_ids), 0)
-      admin_username                       = "CyberScot"
-      admin_password                       = "Password123!"
-      vm_size                              = "Standard_B2ms"
-      timezone                             = "UTC"
-      use_simple_image                     = true
-      vm_os_simple                         = "Windows11Gen2"
+      rg_name          = module.rg.rg_name
+      location         = module.rg.rg_location
+      tags             = module.rg.rg_tags
+      name             = "vm-${var.short}-${var.loc}-${var.env}-01}"
+      subnet_id        = element(values(module.network.subnets_ids), 0)
+      admin_username   = "Local${title(var.short)}${title(var.env)}Admin"
+      admin_password   = data.azurerm_key_vault_secret.mgmt_admin_pwd.value
+      vm_size          = "Standard_B2ms"
+      timezone         = "UTC"
+      vm_os_simple     = "Windows10Gen2"
     },
   ]
 }
@@ -103,16 +102,20 @@ No requirements.
 
 | Name | Source | Version |
 |------|--------|---------|
+| <a name="module_bastion"></a> [bastion](#module\_bastion) | cyber-scot/bastion/azurerm | n/a |
 | <a name="module_network"></a> [network](#module\_network) | cyber-scot/network/azurerm | n/a |
 | <a name="module_nsg"></a> [nsg](#module\_nsg) | cyber-scot/nsg/azurerm | n/a |
 | <a name="module_rg"></a> [rg](#module\_rg) | cyber-scot/rg/azurerm | n/a |
-| <a name="module_windows_vms"></a> [windows\_vms](#module\_windows\_vms) | ../../ | n/a |
+| <a name="module_windows_10_vms"></a> [windows\_10\_vms](#module\_windows\_10\_vms) | cyber-scot/windows-virtual-machine/azurerm | n/a |
 
 ## Resources
 
 | Name | Type |
 |------|------|
 | [azurerm_client_config.current](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/client_config) | data source |
+| [azurerm_key_vault.mgmt_kv](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/key_vault) | data source |
+| [azurerm_key_vault_secret.mgmt_admin_pwd](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/key_vault_secret) | data source |
+| [azurerm_resource_group.mgmt_rg](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/resource_group) | data source |
 | [external_external.detect_os](https://registry.terraform.io/providers/hashicorp/external/latest/docs/data-sources/external) | data source |
 | [external_external.generate_timestamp](https://registry.terraform.io/providers/hashicorp/external/latest/docs/data-sources/external) | data source |
 | [http_http.client_ip](https://registry.terraform.io/providers/hashicorp/http/latest/docs/data-sources/http) | data source |

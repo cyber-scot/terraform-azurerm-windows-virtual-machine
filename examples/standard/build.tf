@@ -49,38 +49,37 @@ module "nsg" {
   }
 }
 
-#module "bastion" {
-#  source = "cyber-scot/bastion/azurerm"
-#
-#  rg_name  = module.rg.rg_name
-#  location = module.rg.rg_location
-#  tags     = module.rg.rg_tags
-#
-#  bastion_host_name                  = "bst-${var.short}-${var.loc}-${var.env}-01"
-#  create_bastion_nsg                 = true
-#  create_bastion_nsg_rules           = true
-#  create_bastion_subnet              = true
-#  bastion_subnet_target_vnet_name    = module.network.vnet_name
-#  bastion_subnet_target_vnet_rg_name = module.network.vnet_rg_name
-#  bastion_subnet_range               = "10.0.1.0/27"
-#}
+module "bastion" {
+  source = "cyber-scot/bastion/azurerm"
 
-module "windows_vms" {
-  source = "../../"
+  rg_name  = module.rg.rg_name
+  location = module.rg.rg_location
+  tags     = module.rg.rg_tags
+
+  bastion_host_name                  = "bst-${var.short}-${var.loc}-${var.env}-01"
+  create_bastion_nsg                 = true
+  create_bastion_nsg_rules           = true
+  create_bastion_subnet              = true
+  bastion_subnet_target_vnet_name    = module.network.vnet_name
+  bastion_subnet_target_vnet_rg_name = module.network.vnet_rg_name
+  bastion_subnet_range               = "10.0.1.0/27"
+}
+
+module "windows_10_vms" {
+  source = "cyber-scot/windows-virtual-machine/azurerm"
 
   vms = [
     {
-      rg_name          = module.rg.rg_name
-      location         = module.rg.rg_location
-      tags             = module.rg.rg_tags
-      name             = "vm-${var.short}-${var.loc}-${var.env}-01"
-      subnet_id        = element(values(module.network.subnets_ids), 0)
-      admin_username   = "CyberScot"
-      admin_password   = "Password123!"
-      vm_size          = "Standard_B2ms"
-      timezone         = "UTC"
-      use_simple_image = true
-      vm_os_simple     = "Windows11Gen2"
+      rg_name        = module.rg.rg_name
+      location       = module.rg.rg_location
+      tags           = module.rg.rg_tags
+      name           = "vm-${var.short}-${var.loc}-${var.env}-01}"
+      subnet_id      = element(values(module.network.subnets_ids), 0)
+      admin_username = "Local${title(var.short)}${title(var.env)}Admin"
+      admin_password = data.azurerm_key_vault_secret.mgmt_admin_pwd.value
+      vm_size        = "Standard_B2ms"
+      timezone       = "UTC"
+      vm_os_simple   = "Windows10Gen2"
     },
   ]
 }

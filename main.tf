@@ -22,7 +22,7 @@ resource "azurerm_network_interface" "nic" {
   enable_accelerated_networking = each.value.enable_accelerated_networking
 
   ip_configuration {
-    name                          = each.value.nic_ipconfig_name
+    name                          = each.value.nic_ipconfig_name != null ? each.value.nic_ipconfig_name : "nic-ipcon-${each.value.name}"
     primary                       = true
     private_ip_address_allocation = each.value.static_private_ip == null ? "Dynamic" : "Static"
     private_ip_address            = each.value.static_private_ip
@@ -37,8 +37,9 @@ resource "azurerm_network_interface" "nic" {
   }
 }
 
+
 resource "azurerm_application_security_group" "asg" {
-  for_each = { for vm in var.vms : vm.name => vm }
+  for_each = { for vm in var.vms : vm.name => vm if each.value.create_asg == true }
 
   name = each.value.asg_name != null ? each.value.asg_name : "asg-${each.value.name}"
   location            = each.value.location
@@ -50,7 +51,7 @@ resource "azurerm_network_interface_application_security_group_association" "asg
   for_each = { for vm in var.vms : vm.name => vm }
 
   network_interface_id          = azurerm_network_interface.nic[each.key].id
-  application_security_group_id = azurerm_application_security_group.asg[each.key].id
+  application_security_group_id = each.value.asg_id != null ? each.value_asg_id : azurerm_application_security_group.asg[each.key].id
 }
 
 
@@ -97,16 +98,6 @@ resource "azurerm_windows_virtual_machine" "this" {
   allow_extension_operations = each.value.allow_extension_operations
   provision_vm_agent         = each.value.provision_vm_agent
 
-  dynamic "source_image_reference" {
-    for_each = try(each.value.use_simple_image, null) == true && try(each.value.use_simple_image_with_plan, null) == false && try(each.value.use_custom_image, null) == false ? [1] : []
-    content {
-      publisher = each.value.vm_os_id == "" ? coalesce(each.value.vm_os_publisher, module.os_calculator[0].calculated_value_os_publisher) : ""
-      offer     = each.value.vm_os_id == "" ? coalesce(each.value.vm_os_offer, module.os_calculator[0].calculated_value_os_offer) : ""
-      sku       = each.value.vm_os_id == "" ? coalesce(each.value.vm_os_sku, module.os_calculator[0].calculated_value_os_sku) : ""
-      version   = each.value.vm_os_id == "" ? each.value.vm_os_version : ""
-    }
-  }
-
   dynamic "additional_capabilities" {
     for_each = each.value.ultra_ssd_enabled ? [1] : []
     content {
@@ -114,12 +105,21 @@ resource "azurerm_windows_virtual_machine" "this" {
     }
   }
 
+    # Use simple image
   dynamic "source_image_reference" {
-  for_each = try(each.value.use_simple_image, null) == false &&
-             try(each.value.use_simple_image_with_plan, null) == false &&
-             try(length(each.value.source_image_reference), 0) > 0 &&
-             try(length(each.value.plan), 0) == 0 &&
-             try(each.value.use_custom_image, null) == false ? [1] : []
+    for_each = try(each.value.use_simple_image, null) == true && try(each.value.use_simple_image_with_plan, null) == false && try(each.value.use_custom_image, null) == false ? [1] : []
+    content {
+      publisher = coalesce(each.value.vm_os_publisher, module.os_calculator[each.value.name].calculated_value_os_publisher)
+      offer     = coalesce(each.value.vm_os_offer, module.os_calculator[each.value.name].calculated_value_os_offer)
+      sku       = coalesce(each.value.vm_os_sku, module.os_calculator[each.value.name].calculated_value_os_sku)
+      version   = coalesce(each.value.vm_os_version, "latest")
+    }
+  }
+
+
+  # Use custom image reference
+  dynamic "source_image_reference" {
+  for_each = try(each.value.use_simple_image, null) == false && try(each.value.use_simple_image_with_plan, null) == false && try(length(each.value.source_image_reference), 0) > 0 && try(length(each.value.plan), 0) == 0 && try(each.value.use_custom_image, null) == false ? [1] : []
 
   content {
     publisher = lookup(each.value.source_image_reference, "publisher", null)
@@ -130,38 +130,30 @@ resource "azurerm_windows_virtual_machine" "this" {
 }
 
 dynamic "source_image_reference" {
-  for_each = try(each.value.use_simple_image, null) == true &&
-             try(each.value.use_simple_image_with_plan, null) == true &&
-             try(each.value.use_custom_image, null) == false ? [1] : []
+  for_each = try(each.value.use_simple_image, null) == true && try(each.value.use_simple_image_with_plan, null) == true && try(each.value.use_custom_image, null) == false ? [1] : []
 
   content {
-    publisher = each.value.vm_os_id == "" ? coalesce(each.value.vm_os_publisher, module.os_calculator_with_plan[0].calculated_value_os_publisher) : ""
-    offer     = each.value.vm_os_id == "" ? coalesce(each.value.vm_os_offer, module.os_calculator_with_plan[0].calculated_value_os_offer) : ""
-    sku       = each.value.vm_os_id == "" ? coalesce(each.value.vm_os_sku, module.os_calculator_with_plan[0].calculated_value_os_sku) : ""
-    version   = each.value.vm_os_id == "" ? each.value.vm_os_version : ""
+    publisher = coalesce(each.value.vm_os_publisher, module.os_calculator_with_plan[each.value.name].calculated_value_os_publisher)
+    offer     = coalesce(each.value.vm_os_offer, module.os_calculator_with_plan[each.value.name].calculated_value_os_offer)
+    sku       = coalesce(each.value.vm_os_sku, module.os_calculator_with_plan[each.value.name].calculated_value_os_sku)
+    version   = coalesce(each.value.vm_os_version, "latest")
   }
 }
 
 
   dynamic "plan" {
-  for_each = try(each.value.use_simple_image, null) == false &&
-             try(each.value.use_simple_image_with_plan, null) == false &&
-             try(length(each.value.plan), 0) > 0 &&
-             try(each.value.use_custom_image, null) == false ? [1] : []
+  for_each = try(each.value.use_simple_image, null) == false && try(each.value.use_simple_image_with_plan, null) == false && try(length(each.value.plan), 0) > 0 && try(each.value.use_custom_image, null) == false ? [1] : []
 
   content {
-    name      = each.value.vm_os_id == "" ? coalesce(each.value.vm_os_sku, module.os_calculator_with_plan[0].calculated_value_os_sku) : ""
-    product   = each.value.vm_os_id == "" ? coalesce(each.value.vm_os_offer, module.os_calculator_with_plan[0].calculated_value_os_offer) : ""
-    publisher = each.value.vm_os_id == "" ? coalesce(each.value.vm_os_publisher, module.os_calculator_with_plan[0].calculated_value_os_publisher) : ""
+    name      = coalesce(each.value.vm_os_sku, module.os_calculator_with_plan[each.value.name].calculated_value_os_sku)
+    product   = coalesce(each.value.vm_os_offer, module.os_calculator_with_plan[each.value.name].calculated_value_os_offer)
+    publisher = coalesce(each.value.vm_os_publisher, module.os_calculator_with_plan[each.value.name].calculated_value_os_publisher)
   }
 }
 
 
   dynamic "plan" {
-  for_each = try(each.value.use_simple_image, null) == false &&
-             try(each.value.use_simple_image_with_plan, null) == false &&
-             try(length(each.value.plan), 0) > 0 &&
-             try(each.value.use_custom_image, null) == false ? [1] : []
+  for_each = try(each.value.use_simple_image, null) == false && try(each.value.use_simple_image_with_plan, null) == false && try(length(each.value.plan), 0) > 0 && try(each.value.use_custom_image, null) == false ? [1] : []
 
   content {
     name      = lookup(each.value.plan, "name", null)
@@ -170,16 +162,16 @@ dynamic "source_image_reference" {
   }
 }
 
-dynamic "identity" {
-  for_each = try(length(each.value.identity_ids) > 0 && each.value.identity_type == "SystemAssigned", false) ? [each.value.identity_type] : []
-  content {
+    dynamic "identity" {
+      for_each = try(length(each.value.identity_ids) > 0 && each.value.identity_type == "SystemAssigned", false) ? [each.value.identity_type] : []
+    content {
     type = each.value.identity_type
   }
 }
 
-dynamic "identity" {
-for_each = try(length(each.value.identity_ids), 0) > 0 || each.value.identity_type == "SystemAssigned, UserAssigned" ? [each.value.identity_type] : []
-  content {
+  dynamic "identity" {
+    for_each = try(length(each.value.identity_ids), 0) > 0 || each.value.identity_type == "SystemAssigned, UserAssigned" ? [each.value.identity_type] : []
+    content {
     type         = each.value.identity_type
     identity_ids = try(each.value.identity_ids, [])
   }
@@ -187,7 +179,7 @@ for_each = try(length(each.value.identity_ids), 0) > 0 || each.value.identity_ty
 
 
   dynamic "identity" {
-    for_each = length(try(each.value.identity_ids, [])) > 0 || each.value.identity_type == "SystemAssigned, UserAssigned" ? [each.value.identity_type] : []
+    for_each = try(length(each.value.identity_ids), 0) > 0 || each.value.identity_type == "SystemAssigned, UserAssigned" ? [each.value.identity_type] : []
     content {
       type         = each.value.identity_type
       identity_ids = length(try(each.value.identity_ids, [])) > 0 ? each.value.identity_ids : []
@@ -199,9 +191,9 @@ for_each = try(length(each.value.identity_ids), 0) > 0 || each.value.identity_ty
   eviction_policy = try(each.value.spot_instance, false) ? each.value.spot_instance_eviction_policy : null
 
   os_disk {
-    name                 = each.value.os_disk_name != null ? each.value.os_disk_name : "os-${each.value.name}"
+    name                 = each.value.os_disk_name != null ? each.value.os_disk_name : "osdisk-${each.value.name}"
     caching              = each.value.os_disk_caching
-    storage_account_type = each.value.storage_account_type
+    storage_account_type = each.value.os_disk_type
     disk_size_gb         = each.value.os_disk_size_gb
   }
 
@@ -234,7 +226,7 @@ resource "azurerm_marketplace_agreement" "plan_acceptance_simple" {
 }
 
 resource "azurerm_marketplace_agreement" "plan_acceptance_custom" {
-  for_each = { for vm in var.vms : vm.name => vm if try(vm.use_simple_image, null) == false && try(vm.use_simple_image_with_plan, null) == false && vm.plan != null && can(length(vm.plan)) && try(vm.accept_plan, null) == true && try(vm.use_custom_image, null) == false }
+    for_each = { for vm in var.vms : vm.name => vm if try(vm.use_custom_image_with_plan, null) == true && try(vm.accept_plan, null) == true && try(vm.use_custom_image, null) == true }
 
   publisher = lookup(each.value.plan, "publisher", null)
   offer     = lookup(each.value.plan, "product", null)
