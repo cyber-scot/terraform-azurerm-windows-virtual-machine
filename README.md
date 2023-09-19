@@ -7,7 +7,7 @@ resource "azurerm_public_ip" "pip" {
   location            = each.value.location
   resource_group_name = each.value.rg_name
   allocation_method   = each.value.allocation_method
-  domain_name_label   = coalesce(each.value.pip_custom_dns_label, each.value.vm_hostname)
+  domain_name_label   = try(each.value.pip_custom_dns_label, each.value.computer_name, null)
   sku                 = each.value.public_ip_sku
 
   lifecycle {
@@ -18,13 +18,13 @@ resource "azurerm_public_ip" "pip" {
 resource "azurerm_network_interface" "nic" {
   for_each = { for vm in var.vms : vm.name => vm }
 
-  name                = each.value.nic_name
-  location            = each.value.location
-  resource_group_name = each.value.rg_name
+  name                          = each.value.nic_name != null ? each.value.nic_name : "nic-${each.value.name}"
+  location                      = each.value.location
+  resource_group_name           = each.value.rg_name
   enable_accelerated_networking = each.value.enable_accelerated_networking
 
   ip_configuration {
-    name                          = each.value.nic_ipconfig_name
+    name                          = each.value.nic_ipconfig_name != null ? each.value.nic_ipconfig_name : "nic-ipcon-${each.value.name}"
     primary                       = true
     private_ip_address_allocation = each.value.static_private_ip == null ? "Dynamic" : "Static"
     private_ip_address            = each.value.static_private_ip
@@ -39,10 +39,11 @@ resource "azurerm_network_interface" "nic" {
   }
 }
 
-resource "azurerm_application_security_group" "asg" {
-  for_each = { for vm in var.vms : vm.name => vm }
 
-  name                = each.value.asg_name != null ? each.value.asg_name : "asg-${each.value.name}"
+resource "azurerm_application_security_group" "asg" {
+  for_each = { for vm in var.vms : vm.name => vm if each.value.create_asg == true }
+
+  name = each.value.asg_name != null ? each.value.asg_name : "asg-${each.value.name}"
   location            = each.value.location
   resource_group_name = each.value.rg_name
   tags                = each.value.tags
@@ -52,12 +53,12 @@ resource "azurerm_network_interface_application_security_group_association" "asg
   for_each = { for vm in var.vms : vm.name => vm }
 
   network_interface_id          = azurerm_network_interface.nic[each.key].id
-  application_security_group_id = azurerm_application_security_group.asg.id
+  application_security_group_id = each.value.asg_id != null ? each.value_asg_id : azurerm_application_security_group.asg[each.key].id
 }
 
 
 resource "random_integer" "zone" {
-  for_each = { for vm in var.vms : vm.name => vm if each.value.availability_zone == "random" }
+  for_each = { for vm in var.vms : vm.name => vm if vm.availability_zone == "random" }
   min      = 1
   max      = 3
 }
@@ -65,7 +66,7 @@ resource "random_integer" "zone" {
 locals {
   sanitized_names = { for vm in var.vms : vm.name => upper(replace(replace(replace(vm.name, " ", ""), "-", ""), "_", "")) }
   netbios_names   = { for key, value in local.sanitized_names : key => substr(value, 0, min(length(value), 15)) }
-  random_zones    = { for key, value in var.vms : key => value.availability_zone == "random" ? tostring(random_integer.zone[key].result) : value.availability_zone }
+  random_zones = { for idx, vm in var.vms : vm.name => vm.availability_zone == "random" ? tostring(idx + 1) : vm.availability_zone }
 }
 
 resource "azurerm_windows_virtual_machine" "this" {
@@ -84,12 +85,12 @@ resource "azurerm_windows_virtual_machine" "this" {
   license_type             = each.value.license_type
   patch_mode               = each.value.patch_mode
   enable_automatic_updates = each.value.enable_automatic_updates
-  computer_name            = each.value.computer_name != null ? each.value.computer_name : local.netbios_name
+  computer_name            = each.value.computer_name != null ? each.value.computer_name : local.netbios_names[each.key]
   admin_username           = each.value.admin_username
   admin_password           = each.value.admin_password
   size                     = each.value.vm_size
   source_image_id          = try(each.value.use_custom_image, null) == true ? each.value.custom_source_image_id : null
-  zone                     = each.value.availability_zone == "random" ? local.random_zone : each.value.availability_zone
+  zone                     = local.random_zones[each.key]
   availability_set_id      = each.value.availability_set_id
   timezone                 = each.value.timezone
   custom_data              = each.value.custom_data
@@ -99,16 +100,6 @@ resource "azurerm_windows_virtual_machine" "this" {
   allow_extension_operations = each.value.allow_extension_operations
   provision_vm_agent         = each.value.provision_vm_agent
 
-  dynamic "source_image_reference" {
-    for_each = try(each.value.use_simple_image, null) == true && try(each.value.use_simple_image_with_plan, null) == false && try(each.value.use_custom_image, null) == false ? [1] : []
-    content {
-      publisher = each.value.vm_os_id == "" ? coalesce(each.value.vm_os_publisher, module.os_calculator[0].calculated_value_os_publisher) : ""
-      offer     = each.value.vm_os_id == "" ? coalesce(each.value.vm_os_offer, module.os_calculator[0].calculated_value_os_offer) : ""
-      sku       = each.value.vm_os_id == "" ? coalesce(each.value.vm_os_sku, module.os_calculator[0].calculated_value_os_sku) : ""
-      version   = each.value.vm_os_id == "" ? each.value.vm_os_version : ""
-    }
-  }
-
   dynamic "additional_capabilities" {
     for_each = each.value.ultra_ssd_enabled ? [1] : []
     content {
@@ -116,75 +107,95 @@ resource "azurerm_windows_virtual_machine" "this" {
     }
   }
 
+    # Use simple image
   dynamic "source_image_reference" {
-    for_each = try(each.value.use_simple_image, null) == false && try(each.value.use_simple_image_with_plan, null) == false && length(each.value.source_image_reference) > 0 && length(each.value.plan) == 0 && try(each.value.use_custom_image, null) == false ? [1] : []
+    for_each = try(each.value.use_simple_image, null) == true && try(each.value.use_simple_image_with_plan, null) == false && try(each.value.use_custom_image, null) == false ? [1] : []
     content {
-      publisher = lookup(each.value.source_image_reference, "publisher", null)
-      offer     = lookup(each.value.source_image_reference, "offer", null)
-      sku       = lookup(each.value.source_image_reference, "sku", null)
-      version   = lookup(each.value.source_image_reference, "version", null)
+      publisher = coalesce(each.value.vm_os_publisher, module.os_calculator[each.value.name].calculated_value_os_publisher)
+      offer     = coalesce(each.value.vm_os_offer, module.os_calculator[each.value.name].calculated_value_os_offer)
+      sku       = coalesce(each.value.vm_os_sku, module.os_calculator[each.value.name].calculated_value_os_sku)
+      version   = coalesce(each.value.vm_os_version, "latest")
     }
   }
 
+
+  # Use custom image reference
   dynamic "source_image_reference" {
-    for_each = try(each.value.use_simple_image, null) == true && try(each.value.use_simple_image_with_plan, null) == true && try(each.value.use_custom_image, null) == false ? [1] : []
-    content {
-      publisher = each.value.vm_os_id == "" ? coalesce(each.value.vm_os_publisher, module.os_calculator_with_plan[0].calculated_value_os_publisher) : ""
-      offer     = each.value.vm_os_id == "" ? coalesce(each.value.vm_os_offer, module.os_calculator_with_plan[0].calculated_value_os_offer) : ""
-      sku       = each.value.vm_os_id == "" ? coalesce(each.value.vm_os_sku, module.os_calculator_with_plan[0].calculated_value_os_sku) : ""
-      version   = each.value.vm_os_id == "" ? each.value.vm_os_version : ""
-    }
+  for_each = try(each.value.use_simple_image, null) == false && try(each.value.use_simple_image_with_plan, null) == false && try(length(each.value.source_image_reference), 0) > 0 && try(length(each.value.plan), 0) == 0 && try(each.value.use_custom_image, null) == false ? [1] : []
+
+  content {
+    publisher = lookup(each.value.source_image_reference, "publisher", null)
+    offer     = lookup(each.value.source_image_reference, "offer", null)
+    sku       = lookup(each.value.source_image_reference, "sku", null)
+    version   = lookup(each.value.source_image_reference, "version", null)
   }
+}
+
+dynamic "source_image_reference" {
+  for_each = try(each.value.use_simple_image, null) == true && try(each.value.use_simple_image_with_plan, null) == true && try(each.value.use_custom_image, null) == false ? [1] : []
+
+  content {
+    publisher = coalesce(each.value.vm_os_publisher, module.os_calculator_with_plan[each.value.name].calculated_value_os_publisher)
+    offer     = coalesce(each.value.vm_os_offer, module.os_calculator_with_plan[each.value.name].calculated_value_os_offer)
+    sku       = coalesce(each.value.vm_os_sku, module.os_calculator_with_plan[each.value.name].calculated_value_os_sku)
+    version   = coalesce(each.value.vm_os_version, "latest")
+  }
+}
+
 
   dynamic "plan" {
-    for_each = try(each.value.use_simple_image, null) == true && try(each.value.use_simple_image_with_plan, null) == true && try(each.value.use_custom_image, null) == false ? [1] : []
-    content {
-      name      = each.value.vm_os_id == "" ? coalesce(each.value.vm_os_sku, module.os_calculator_with_plan[0].calculated_value_os_sku) : ""
-      product   = each.value.vm_os_id == "" ? coalesce(each.value.vm_os_offer, module.os_calculator_with_plan[0].calculated_value_os_offer) : ""
-      publisher = each.value.vm_os_id == "" ? coalesce(each.value.vm_os_publisher, module.os_calculator_with_plan[0].calculated_value_os_publisher) : ""
-    }
+  for_each = try(each.value.use_simple_image, null) == false && try(each.value.use_simple_image_with_plan, null) == false && try(length(each.value.plan), 0) > 0 && try(each.value.use_custom_image, null) == false ? [1] : []
+
+  content {
+    name      = coalesce(each.value.vm_os_sku, module.os_calculator_with_plan[each.value.name].calculated_value_os_sku)
+    product   = coalesce(each.value.vm_os_offer, module.os_calculator_with_plan[each.value.name].calculated_value_os_offer)
+    publisher = coalesce(each.value.vm_os_publisher, module.os_calculator_with_plan[each.value.name].calculated_value_os_publisher)
   }
+}
+
 
   dynamic "plan" {
-    for_each = try(each.value.use_simple_image, null) == false && try(each.value.use_simple_image_with_plan, null) == false && length(each.value.plan) > 0 && try(each.value.use_custom_image, null) == false ? [1] : []
-    content {
-      name      = lookup(each.value.plan, "name", null)
-      product   = lookup(each.value.plan, "product", null)
-      publisher = lookup(each.value.plan, "publisher", null)
-    }
+  for_each = try(each.value.use_simple_image, null) == false && try(each.value.use_simple_image_with_plan, null) == false && try(length(each.value.plan), 0) > 0 && try(each.value.use_custom_image, null) == false ? [1] : []
+
+  content {
+    name      = lookup(each.value.plan, "name", null)
+    product   = lookup(each.value.plan, "product", null)
+    publisher = lookup(each.value.plan, "publisher", null)
   }
+}
+
+    dynamic "identity" {
+      for_each = try(length(each.value.identity_ids) > 0 && each.value.identity_type == "SystemAssigned", false) ? [each.value.identity_type] : []
+    content {
+    type = each.value.identity_type
+  }
+}
 
   dynamic "identity" {
-    for_each = length(each.value.identity_ids) == 0 && each.value.identity_type == "SystemAssigned" ? [each.value.identity_type] : []
+    for_each = try(length(each.value.identity_ids), 0) > 0 || each.value.identity_type == "SystemAssigned, UserAssigned" ? [each.value.identity_type] : []
     content {
-      type = each.value.identity_type
-    }
+    type         = each.value.identity_type
+    identity_ids = try(each.value.identity_ids, [])
   }
+}
+
 
   dynamic "identity" {
-    for_each = length(each.value.identity_ids) > 0 || each.value.identity_type == "UserAssigned" ? [each.value.identity_type] : []
+    for_each = try(length(each.value.identity_ids), 0) > 0 || each.value.identity_type == "SystemAssigned, UserAssigned" ? [each.value.identity_type] : []
     content {
       type         = each.value.identity_type
-      identity_ids = length(each.value.identity_ids) > 0 ? each.value.identity_ids : []
+      identity_ids = length(try(each.value.identity_ids, [])) > 0 ? each.value.identity_ids : []
     }
   }
 
-  dynamic "identity" {
-    for_each = length(each.value.identity_ids) > 0 || each.value.identity_type == "SystemAssigned, UserAssigned" ? [each.value.identity_type] : []
-    content {
-      type         = each.value.identity_type
-      identity_ids = length(each.value.identity_ids) > 0 ? each.value.identity_ids : []
-    }
-  }
-
-  priority        = each.value.spot_instance ? "Spot" : "Regular"
-  max_bid_price   = each.value.spot_instance ? each.value.spot_instance_max_bid_price : null
-  eviction_policy = each.value.spot_instance ? each.value.spot_instance_eviction_policy : null
+  priority        = try(each.value.spot_instance, false) ? "Spot" : "Regular"
+  max_bid_price   = try(each.value.spot_instance, false) ? each.value.spot_instance_max_bid_price : null
+  eviction_policy = try(each.value.spot_instance, false) ? each.value.spot_instance_eviction_policy : null
 
   os_disk {
-    name                 = each.value.os_disk_name != null ? each.value.os_disk_name : "os-${each.value.name}"
+    name                 = each.value.os_disk_name != null ? each.value.os_disk_name : "osdisk-${each.value.name}"
     caching              = each.value.os_disk_caching
-    storage_account_type = each.value.storage_account_type
+    storage_account_type = each.value.os_disk_type
     disk_size_gb         = each.value.os_disk_size_gb
   }
 
@@ -217,7 +228,7 @@ resource "azurerm_marketplace_agreement" "plan_acceptance_simple" {
 }
 
 resource "azurerm_marketplace_agreement" "plan_acceptance_custom" {
-  for_each = { for vm in var.vms : vm.name => vm if try(vm.use_simple_image, null) == false && try(vm.use_simple_image_with_plan, null) == false && length(vm.plan) > 0 && try(vm.accept_plan, null) == true && try(vm.use_custom_image, null) == false }
+    for_each = { for vm in var.vms : vm.name => vm if try(vm.use_custom_image_with_plan, null) == true && try(vm.accept_plan, null) == true && try(vm.use_custom_image, null) == true }
 
   publisher = lookup(each.value.plan, "publisher", null)
   offer     = lookup(each.value.plan, "product", null)
@@ -259,8 +270,19 @@ No requirements.
 
 | Name | Description | Type | Default | Required |
 |------|-------------|------|---------|:--------:|
-| <a name="input_vms"></a> [vms](#input\_vms) | List of VM configurations. | <pre>list(object({<br>    name                                 = string<br>    location                             = string<br>    rg_name                              = string<br>    nic_name                             = optional(string)<br>    nic_ipconfig_name                    = optional(string)<br>    enable_accelerated_networking        = optional(bool)<br>    static_private_ip                    = optional(string)<br>    public_ip_sku                        = optional(string, "Standard")<br>    pip_name                             = optional(string)<br>    pip_custom_dns_label                 = optional(string)<br>    subnet_id                            = string<br>    tags                                 = map(string)<br>    license_type                         = optional(string)<br>    patch_mode                           = optional(string)<br>    enable_automatic_updates             = optional(bool)<br>    computer_name                        = optional(string)<br>    admin_username                       = optional(string)<br>    admin_password                       = optional(string)<br>    vm_size                              = optional(string)<br>    use_custom_image                     = optional(bool, false)<br>    custom_source_image_id               = optional(string)<br>    availability_zone                    = optional(string, "random")<br>    availability_set_id                  = optional(string)<br>    timezone                             = optional(string)<br>    custom_data                          = optional(string)<br>    enable_encryption_at_host            = optional(bool)<br>    allow_extension_operations           = optional(bool)<br>    provision_vm_agent                   = optional(bool)<br>    use_simple_image                     = optional(bool, true)<br>    use_simple_image_with_plan           = optional(bool, false)<br>    vm_os_simple                         = optional(string)<br>    vm_os_id                             = optional(string)<br>    vm_os_publisher                      = optional(string)<br>    vm_os_offer                          = optional(string)<br>    vm_os_sku                            = optional(string)<br>    vm_os_version                        = optional(string)<br>    ultra_ssd_enabled                    = optional(bool)<br>    source_image_reference               = optional(map(string))<br>    plan                                 = optional(map(string))<br>    identity_type                        = optional(string)<br>    identity_ids                         = optional(list(string))<br>    spot_instance                        = optional(bool)<br>    spot_instance_max_bid_price          = optional(string)<br>    spot_instance_eviction_policy        = optional(string)<br>    os_disk_name                         = optional(string)<br>    os_disk_caching                      = optional(string)<br>    storage_account_type                 = optional(string)<br>    os_disk_size_gb                      = optional(number)<br>    boot_diagnostics_storage_account_uri = optional(string, null)<br>  }))</pre> | `[]` | no |
+| <a name="input_vms"></a> [vms](#input\_vms) | List of VM configurations. | <pre>list(object({<br>    accept_plan                          = optional(bool, false)<br>    admin_password                       = string<br>    admin_username                       = string<br>    allocation_method                    = optional(string, "Static")<br>    allow_extension_operations           = optional(bool, true)<br>    asg_id                               = optional(string, null)<br>    asg_name                             = optional(string, null)<br>    availability_set_id                  = optional(string)<br>    availability_zone                    = optional(string, "random")<br>    boot_diagnostics_storage_account_uri = optional(string, null)<br>    computer_name                        = optional(string)<br>    create_asg                           = optional(bool, true)<br>    custom_data                          = optional(string)<br>    custom_source_image_id               = optional(string, null)<br>    enable_accelerated_networking        = optional(bool, false)<br>    enable_automatic_updates             = optional(bool, true)<br>    enable_encryption_at_host            = optional(bool, false)<br>    identity_ids                         = optional(list(string))<br>    identity_type                        = optional(string)<br>    license_type                         = optional(string)<br>    location                             = string<br>    name                                 = string<br>    nic_ipconfig_name                    = optional(string)<br>    nic_name                             = optional(string, null)<br>    os_disk_caching                      = optional(string, "ReadWrite")<br>    os_disk_name                         = optional(string)<br>    os_disk_size_gb                      = optional(number, 128)<br>    os_disk_type                         = optional(string, "StandardSSD_LRS")<br>    patch_mode                           = optional(string, "AutomaticByOS")<br>    pip_custom_dns_label                 = optional(string)<br>    pip_name                             = optional(string)<br>    provision_vm_agent                   = optional(bool, true)<br>    public_ip_sku                        = optional(string, null)<br>    rg_name                              = string<br>    source_image_reference               = optional(map(string))<br>    spot_instance                        = optional(bool, false)<br>    spot_instance_eviction_policy        = optional(string)<br>    spot_instance_max_bid_price          = optional(string)<br>    static_private_ip                    = optional(string)<br>    subnet_id                            = string<br>    tags                                 = map(string)<br>    timezone                             = optional(string)<br>    ultra_ssd_enabled                    = optional(bool, false)<br>    use_custom_image                     = optional(bool, false)<br>    use_custom_image_with_plan           = optional(bool, false)<br>    use_simple_image                     = optional(bool, true)<br>    use_simple_image_with_plan           = optional(bool, false)<br>    vm_os_id                             = optional(string, "")<br>    vm_os_offer                          = optional(string)<br>    vm_os_publisher                      = optional(string)<br>    vm_os_simple                         = optional(string)<br>    vm_os_sku                            = optional(string)<br>    vm_os_version                        = optional(string)<br>    vm_size                              = string<br>  }))</pre> | `[]` | no |
 
 ## Outputs
 
-No outputs.
+| Name | Description |
+|------|-------------|
+| <a name="output_asg_ids"></a> [asg\_ids](#output\_asg\_ids) | List of ASG IDs. |
+| <a name="output_asg_names"></a> [asg\_names](#output\_asg\_names) | List of ASG Names. |
+| <a name="output_managed_identities"></a> [managed\_identities](#output\_managed\_identities) | Managed identities of the VMs |
+| <a name="output_nic_private_ipv4_addresses"></a> [nic\_private\_ipv4\_addresses](#output\_nic\_private\_ipv4\_addresses) | List of NIC Private IPv4 Addresses. |
+| <a name="output_public_ip_ids"></a> [public\_ip\_ids](#output\_public\_ip\_ids) | List of Public IP IDs. |
+| <a name="output_public_ip_names"></a> [public\_ip\_names](#output\_public\_ip\_names) | List of Public IP Names. |
+| <a name="output_public_ip_values"></a> [public\_ip\_values](#output\_public\_ip\_values) | List of Public IP Addresses. |
+| <a name="output_vm_details_map"></a> [vm\_details\_map](#output\_vm\_details\_map) | A map where the key is the VM name and the value is another map containing the VM ID and private IP address. |
+| <a name="output_vm_ids"></a> [vm\_ids](#output\_vm\_ids) | List of VM IDs. |
+| <a name="output_vm_names"></a> [vm\_names](#output\_vm\_names) | List of VM Names. |
