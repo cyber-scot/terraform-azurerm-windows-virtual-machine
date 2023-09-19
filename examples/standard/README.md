@@ -67,7 +67,7 @@ module "bastion" {
   bastion_subnet_range               = "10.0.1.0/27"
 }
 
-module "windows_10_vms" {
+module "windows_11_vms" {
   source = "cyber-scot/windows-virtual-machine/azurerm"
 
   count = 2
@@ -83,7 +83,7 @@ module "windows_10_vms" {
       admin_password = data.azurerm_key_vault_secret.mgmt_admin_pwd.value
       vm_size        = "Standard_B2ms"
       timezone       = "UTC"
-      vm_os_simple   = "Windows10Gen2"
+      vm_os_simple   = "Windows11"
       os_disk = {
         disk_size_gb = 256
       }
@@ -94,11 +94,10 @@ module "windows_10_vms" {
   ]
 }
 
-
 resource "azurerm_application_security_group" "server_asg" {
-  rg_name        = module.rg.rg_name
-  location       = module.rg.rg_location
-  tags           = module.rg.rg_tags
+  resource_group_name  = module.rg.rg_name
+  location             = module.rg.rg_location
+  tags                 = module.rg.rg_tags
 
   name = "asg-server-${var.short}-${var.loc}-${var.env}-01"
 }
@@ -170,7 +169,7 @@ No requirements.
 | <a name="module_network"></a> [network](#module\_network) | cyber-scot/network/azurerm | n/a |
 | <a name="module_nsg"></a> [nsg](#module\_nsg) | cyber-scot/nsg/azurerm | n/a |
 | <a name="module_rg"></a> [rg](#module\_rg) | cyber-scot/rg/azurerm | n/a |
-| <a name="module_windows_10_vms"></a> [windows\_10\_vms](#module\_windows\_10\_vms) | cyber-scot/windows-virtual-machine/azurerm | n/a |
+| <a name="module_windows_11_vms"></a> [windows\_11\_vms](#module\_windows\_11\_vms) | cyber-scot/windows-virtual-machine/azurerm | n/a |
 | <a name="module_windows_server"></a> [windows\_server](#module\_windows\_server) | cyber-scot/windows-virtual-machine/azurerm | n/a |
 
 ## Resources
