@@ -72,16 +72,16 @@ module "windows_10_vms" {
 
   vms = [
     {
-      rg_name          = module.rg.rg_name
-      location         = module.rg.rg_location
-      tags             = module.rg.rg_tags
-      name             = "vm-${var.short}-${var.loc}-${var.env}-01}"
-      subnet_id        = element(values(module.network.subnets_ids), 0)
-      admin_username   = "Local${title(var.short)}${title(var.env)}Admin"
-      admin_password   = data.azurerm_key_vault_secret.mgmt_admin_pwd.value
-      vm_size          = "Standard_B2ms"
-      timezone         = "UTC"
-      vm_os_simple     = "Windows10Gen2"
+      rg_name        = module.rg.rg_name
+      location       = module.rg.rg_location
+      tags           = module.rg.rg_tags
+      name           = "vm-${var.short}-${var.loc}-${var.env}-01}"
+      subnet_id      = element(values(module.network.subnets_ids), 0)
+      admin_username = "Local${title(var.short)}${title(var.env)}Admin"
+      admin_password = data.azurerm_key_vault_secret.mgmt_admin_pwd.value
+      vm_size        = "Standard_B2ms"
+      timezone       = "UTC"
+      vm_os_simple   = "Windows10Gen2"
     },
   ]
 }

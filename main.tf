@@ -39,7 +39,7 @@ resource "azurerm_network_interface" "nic" {
 
 
 resource "azurerm_application_security_group" "asg" {
-  for_each = { for vm in var.vms : vm.name => vm if each.value.create_asg == true }
+  for_each = { for vm in var.vms : vm.name => vm if vm.create_asg == true }
 
   name                = each.value.asg_name != null ? each.value.asg_name : "asg-${each.value.name}"
   location            = each.value.location
