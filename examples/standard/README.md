@@ -68,15 +68,16 @@ module "bastion" {
 }
 
 module "windows_10_vms" {
-  source = "../../"
+  source = "cyber-scot/windows-virtual-machine/azurerm"
 
+  count = 2
 
   vms = [
     {
       rg_name        = module.rg.rg_name
       location       = module.rg.rg_location
       tags           = module.rg.rg_tags
-      name           = "vm-${var.short}-${var.loc}-${var.env}-01"
+      name           = "vm-${var.short}-${var.loc}-${var.env}-${format("%02d", count.index + 1)}"
       subnet_id      = element(values(module.network.subnets_ids), 0)
       admin_username = "Local${title(var.short)}${title(var.env)}Admin"
       admin_password = data.azurerm_key_vault_secret.mgmt_admin_pwd.value
@@ -87,7 +88,63 @@ module "windows_10_vms" {
         disk_size_gb = 256
       }
       run_vm_command = {
-        inline = "Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))"
+        inline = "try { Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072; iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1')) } catch { Write-Error 'An error occurred:' $_; exit 1 }"
+      }
+    },
+  ]
+}
+
+
+resource "azurerm_application_security_group" "server_asg" {
+  rg_name        = module.rg.rg_name
+  location       = module.rg.rg_location
+  tags           = module.rg.rg_tags
+
+  name = "asg-server-${var.short}-${var.loc}-${var.env}-01"
+}
+
+module "windows_server" {
+  source = "cyber-scot/windows-virtual-machine/azurerm"
+
+  vms = [
+    {
+      rg_name        = module.rg.rg_name
+      location       = module.rg.rg_location
+      tags           = module.rg.rg_tags
+      name           = "web-${var.short}-${var.loc}-${var.env}-01"
+      subnet_id      = element(values(module.network.subnets_ids), 0)
+      create_asg     = false
+      asg_id         = azurerm_application_security_group.server_asg.id
+      admin_username = "Local${title(var.short)}${title(var.env)}Admin"
+      admin_password = data.azurerm_key_vault_secret.mgmt_admin_pwd.value
+      vm_size        = "Standard_B2ms"
+      timezone       = "UTC"
+      vm_os_simple   = "WindowsServer2022AzureEditionGen2"
+      os_disk = {
+        disk_size_gb = 128
+      }
+      run_vm_command = {
+        inline = "try { Install-WindowsFeature -Name Web-Server -IncludeManagementTools } catch { Write-Error 'Failed to install IIS: $_'; exit 1 }"
+      }
+    },
+    {
+      rg_name        = module.rg.rg_name
+      location       = module.rg.rg_location
+      tags           = module.rg.rg_tags
+      name           = "app-${var.short}-${var.loc}-${var.env}-01"
+      subnet_id      = element(values(module.network.subnets_ids), 0)
+      create_asg     = false
+      asg_id         = azurerm_application_security_group.server_asg.id
+      admin_username = "Local${title(var.short)}${title(var.env)}Admin"
+      admin_password = data.azurerm_key_vault_secret.mgmt_admin_pwd.value
+      vm_size        = "Standard_B2ms"
+      timezone       = "UTC"
+      vm_os_simple   = "WindowsServer2022AzureEditionGen2"
+      os_disk = {
+        disk_size_gb = 128
+      }
+      run_vm_command = {
+        inline = "try { Install-WindowsFeature -Name Application-Server } catch { Write-Error 'Failed to install Application Server: $_'; exit 1 }"
       }
     },
   ]
@@ -113,12 +170,14 @@ No requirements.
 | <a name="module_network"></a> [network](#module\_network) | cyber-scot/network/azurerm | n/a |
 | <a name="module_nsg"></a> [nsg](#module\_nsg) | cyber-scot/nsg/azurerm | n/a |
 | <a name="module_rg"></a> [rg](#module\_rg) | cyber-scot/rg/azurerm | n/a |
-| <a name="module_windows_10_vms"></a> [windows\_10\_vms](#module\_windows\_10\_vms) | ../../ | n/a |
+| <a name="module_windows_10_vms"></a> [windows\_10\_vms](#module\_windows\_10\_vms) | cyber-scot/windows-virtual-machine/azurerm | n/a |
+| <a name="module_windows_server"></a> [windows\_server](#module\_windows\_server) | cyber-scot/windows-virtual-machine/azurerm | n/a |
 
 ## Resources
 
 | Name | Type |
 |------|------|
+| [azurerm_application_security_group.server_asg](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/resources/application_security_group) | resource |
 | [azurerm_client_config.current](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/client_config) | data source |
 | [azurerm_key_vault.mgmt_kv](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/key_vault) | data source |
 | [azurerm_key_vault_secret.mgmt_admin_pwd](https://registry.terraform.io/providers/hashicorp/azurerm/latest/docs/data-sources/key_vault_secret) | data source |
