@@ -210,12 +210,14 @@ resource "azurerm_windows_virtual_machine" "this" {
       }
     }
   }
+
   dynamic "boot_diagnostics" {
-    for_each = each.value.boot_diagnostics_storage_account_uri != null ? [1] : []
+    for_each = each.value.boot_diagnostics_storage_account_uri != null ? [each.value.boot_diagnostics_storage_account_uri] : [null]
     content {
-      storage_account_uri = each.value.boot_diagnostics_storage_account_uri
+      storage_account_uri = boot_diagnostics.value
     }
   }
+
 
   dynamic "additional_unattend_content" {
     for_each = each.value.additional_unattend_content != null ? each.value.additional_unattend_content : []
@@ -247,7 +249,6 @@ resource "azurerm_windows_virtual_machine" "this" {
       timeout = lookup(termination_notification.value, "timeout", "PT5M")
     }
   }
-
 
   dynamic "winrm_listener" {
     for_each = each.value.winrm_listener != null ? each.value.winrm_listener : []
@@ -395,15 +396,4 @@ No requirements.
 
 ## Outputs
 
-| Name | Description |
-|------|-------------|
-| <a name="output_asg_ids"></a> [asg\_ids](#output\_asg\_ids) | List of ASG IDs. |
-| <a name="output_asg_names"></a> [asg\_names](#output\_asg\_names) | List of ASG Names. |
-| <a name="output_managed_identities"></a> [managed\_identities](#output\_managed\_identities) | Managed identities of the VMs |
-| <a name="output_nic_private_ipv4_addresses"></a> [nic\_private\_ipv4\_addresses](#output\_nic\_private\_ipv4\_addresses) | List of NIC Private IPv4 Addresses. |
-| <a name="output_public_ip_ids"></a> [public\_ip\_ids](#output\_public\_ip\_ids) | List of Public IP IDs. |
-| <a name="output_public_ip_names"></a> [public\_ip\_names](#output\_public\_ip\_names) | List of Public IP Names. |
-| <a name="output_public_ip_values"></a> [public\_ip\_values](#output\_public\_ip\_values) | List of Public IP Addresses. |
-| <a name="output_vm_details_map"></a> [vm\_details\_map](#output\_vm\_details\_map) | A map where the key is the VM name and the value is another map containing the VM ID and private IP address. |
-| <a name="output_vm_ids"></a> [vm\_ids](#output\_vm\_ids) | List of VM IDs. |
-| <a name="output_vm_names"></a> [vm\_names](#output\_vm\_names) | List of VM Names. |
+No outputs.

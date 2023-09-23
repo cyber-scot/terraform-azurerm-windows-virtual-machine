@@ -208,12 +208,14 @@ resource "azurerm_windows_virtual_machine" "this" {
       }
     }
   }
+
   dynamic "boot_diagnostics" {
-    for_each = each.value.boot_diagnostics_storage_account_uri != null ? [1] : []
+    for_each = each.value.boot_diagnostics_storage_account_uri != null ? [each.value.boot_diagnostics_storage_account_uri] : [null]
     content {
-      storage_account_uri = each.value.boot_diagnostics_storage_account_uri
+      storage_account_uri = boot_diagnostics.value
     }
   }
+
 
   dynamic "additional_unattend_content" {
     for_each = each.value.additional_unattend_content != null ? each.value.additional_unattend_content : []
@@ -245,7 +247,6 @@ resource "azurerm_windows_virtual_machine" "this" {
       timeout = lookup(termination_notification.value, "timeout", "PT5M")
     }
   }
-
 
   dynamic "winrm_listener" {
     for_each = each.value.winrm_listener != null ? each.value.winrm_listener : []
