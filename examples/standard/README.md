@@ -21,7 +21,7 @@ module "network" {
 
   subnets = {
     "sn1-${module.network.vnet_name}" = {
-      prefix            = "10.0.0.0/24",
+      address_prefixes = ["10.0.0.0/24"]
       service_endpoints = ["Microsoft.Storage"]
     }
   }
@@ -95,9 +95,9 @@ module "windows_11_vms" {
 }
 
 resource "azurerm_application_security_group" "server_asg" {
-  resource_group_name  = module.rg.rg_name
-  location             = module.rg.rg_location
-  tags                 = module.rg.rg_tags
+  resource_group_name = module.rg.rg_name
+  location            = module.rg.rg_location
+  tags                = module.rg.rg_tags
 
   name = "asg-server-${var.short}-${var.loc}-${var.env}-01"
 }
