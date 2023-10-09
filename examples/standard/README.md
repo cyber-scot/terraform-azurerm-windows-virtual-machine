@@ -72,7 +72,7 @@ module "windows_11_vms" {
 
   count = 2
 
-  vms = [
+  windows_vms = [
     {
       rg_name        = module.rg.rg_name
       location       = module.rg.rg_location
@@ -157,7 +157,7 @@ No requirements.
 
 | Name | Version |
 |------|---------|
-| <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 3.73.0 |
+| <a name="provider_azurerm"></a> [azurerm](#provider\_azurerm) | 3.75.0 |
 | <a name="provider_external"></a> [external](#provider\_external) | 2.3.1 |
 | <a name="provider_http"></a> [http](#provider\_http) | 3.4.0 |
 

@@ -70,7 +70,7 @@ module "windows_11_vms" {
 
   count = 2
 
-  vms = [
+  windows_vms = [
     {
       rg_name        = module.rg.rg_name
       location       = module.rg.rg_location
