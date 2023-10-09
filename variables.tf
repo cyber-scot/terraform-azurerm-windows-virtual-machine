@@ -1,4 +1,4 @@
-variable "vms" {
+variable "windows_vms" {
   description = "List of VM configurations."
   type = list(object({
     accept_plan = optional(bool, false)
