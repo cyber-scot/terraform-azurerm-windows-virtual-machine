@@ -21,7 +21,7 @@ module "network" {
 
   subnets = {
     "sn1-${module.network.vnet_name}" = {
-      address_prefixes = ["10.0.0.0/24"]
+      address_prefixes  = ["10.0.0.0/24"]
       service_endpoints = ["Microsoft.Storage"]
     }
   }
@@ -105,7 +105,7 @@ resource "azurerm_application_security_group" "server_asg" {
 module "windows_server" {
   source = "cyber-scot/windows-virtual-machine/azurerm"
 
-  vms = [
+  windows-vms = [
     {
       rg_name        = module.rg.rg_name
       location       = module.rg.rg_location
