@@ -163,6 +163,7 @@ resource "azurerm_windows_virtual_machine" "this" {
     }
   }
 
+
   dynamic "identity" {
     for_each = each.value.identity_type == "SystemAssigned" ? [each.value.identity_type] : []
     content {
@@ -171,21 +172,21 @@ resource "azurerm_windows_virtual_machine" "this" {
   }
 
   dynamic "identity" {
-    for_each = try(length(each.value.identity_ids), 0) > 0 || each.value.identity_type == "UserAssigned" ? [each.value.identity_type] : []
+    for_each = each.value.identity_type == "SystemAssigned, UserAssigned" ? [each.value.identity_type] : []
     content {
       type         = each.value.identity_type
       identity_ids = try(each.value.identity_ids, [])
     }
   }
 
-
   dynamic "identity" {
-    for_each = try(length(each.value.identity_ids), 0) > 0 || each.value.identity_type == "SystemAssigned, UserAssigned" ? [each.value.identity_type] : []
+    for_each = each.value.identity_type == "UserAssigned" ? [each.value.identity_type] : []
     content {
       type         = each.value.identity_type
       identity_ids = length(try(each.value.identity_ids, [])) > 0 ? each.value.identity_ids : []
     }
   }
+
 
   priority        = try(each.value.spot_instance, false) ? "Spot" : "Regular"
   max_bid_price   = try(each.value.spot_instance, false) ? each.value.spot_instance_max_bid_price : null
