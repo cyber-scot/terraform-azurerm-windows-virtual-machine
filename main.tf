@@ -17,7 +17,35 @@ resource "azurerm_network_interface" "nic" {
   for_each = { for vm in var.windows_vms : vm.name => vm }
 
   name                          = each.value.nic_name != null ? each.value.nic_name : "nic-${each.value.name}"
-  location                      = c
+  location                      = each.value.location
+  resource_group_name           = each.value.rg_name
+  enable_accelerated_networking = each.value.enable_accelerated_networking
+
+  ip_configuration {
+    name                          = each.value.nic_ipconfig_name != null ? each.value.nic_ipconfig_name : "nic-ipcon-${each.value.name}"
+    primary                       = true
+    private_ip_address_allocation = each.value.static_private_ip == null ? "Dynamic" : "Static"
+    private_ip_address            = each.value.static_private_ip
+    public_ip_address_id          = lookup(each.value, "public_ip_sku", null) == null ? null : azurerm_public_ip.pip[each.key].id
+    subnet_id                     = each.value.subnet_id
+  }
+  tags = each.value.tags
+
+  timeouts {
+    create = "5m"
+    delete = "10m"
+  }
+}
+
+resource "azurerm_application_security_group" "asg" {
+  for_each = { for vm in var.windows_vms : vm.name => vm if vm.create_asg == true }
+
+  name                = each.value.asg_name != null ? each.value.asg_name : "asg-${each.value.name}"
+  location            = each.value.location
+  resource_group_name = each.value.rg_name
+  tags                = each.value.tags
+}
+
 resource "azurerm_network_interface_application_security_group_association" "asg_association" {
   for_each = { for vm in var.windows_vms : vm.name => vm }
 
